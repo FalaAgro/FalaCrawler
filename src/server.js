@@ -136,9 +136,10 @@ const runScraping = async () => {
   }
 };
 
-cron.schedule('0 */4 * * *', () => {
-  console.log('Iniciando scraping e processamento...');
+cron.schedule('*/10 * * * *', () => {
+  console.log('Iniciando scraping e processamento a cada 10 minutos...');
   runScraping();
 });
+
 
 runScraping();
