@@ -1,7 +1,5 @@
 const cheerio = require('cheerio');
 const axios = require('axios');
-const cron = require('node-cron');
-
 
 const API_ENDPOINT = 'api_link';
 
@@ -65,11 +63,9 @@ const capitaisBrasil = [
   'Palmas',
 ];
 
-const baseURL = 'https://www.embrapa.br/busca-de-noticias';
-
-const runScraping = async () => {
+const scrapeEmbrapa = async () => {
   try {
-    const { data } = await axios.get(baseURL);
+    const { data } = await axios.get('https://www.embrapa.br/busca-de-noticias');
     const $ = cheerio.load(data);
 
     const noticias = [];
@@ -111,11 +107,13 @@ const runScraping = async () => {
         continue;
       }
 
+      console.log('Raspagem Embrapa');
       console.log('Título:', noticia.title);
       console.log('Resumo:', noticia.resumo);
       console.log('Texto da Notícia:', textoNoticia);
       console.log('Estado:', estadoEncontrado);
       console.log('Cidade:', cidade);
+      console.log('Imagem:', imagemCompleta);
       console.log('---');
 
       try {
@@ -137,8 +135,75 @@ const runScraping = async () => {
   }
 };
 
+const scrapeGloboRural = async () => {
+  try {
+    const { data } = await axios.get('https://g1.globo.com/economia/agronegocios/globo-rural/');
+    const $ = cheerio.load(data);
 
-cron.schedule('0 0 */3 * *', () => {
-  console.log('Executando o script de scraping a cada 3 dias.');
-  runScraping();
-});
+    const noticias = [];
+
+    $('.feed-post-body').each((index, element) => {
+      const title = $(element).find('a.feed-post-link').text().trim();
+      const resumo = $(element).find('.feed-post-body-resumo').text().trim();
+      const link = $(element).find('a.feed-post-link').attr('href');
+
+      noticias.push({ title, resumo, link });
+    });
+
+    for (const noticia of noticias) {
+      const response = await axios.get(noticia.link);
+      const $noticia = cheerio.load(response.data);
+
+      const imagemPrincipal = $noticia('.mc-article-body img').attr('src');
+      const imagemCompleta = imagemPrincipal ? `${imagemPrincipal}` : '';
+
+      const textoNoticia = $noticia('.mc-article-body p').text();
+
+      let estadoEncontrado = '';
+      let cidade = '';
+      for (const estado in estadosBrasil) {
+        if (textoNoticia.includes(estado)) {
+          estadoEncontrado = estadosBrasil[estado];
+          cidade = capitaisBrasil[Object.keys(estadosBrasil).indexOf(estado)];
+          break;
+        }
+      }
+
+      if (!estadoEncontrado) {
+        continue;
+      }
+
+      console.log('Raspagem GloboRural');
+      console.log('Título:', noticia.title);
+      console.log('Resumo:', noticia.resumo);
+      console.log('Texto da Notícia:', textoNoticia);
+      console.log('Estado:', estadoEncontrado);
+      console.log('Cidade:', cidade);
+      console.log('Imagem:', imagemCompleta);
+      console.log('---');
+
+      try {
+        const response = await axios.post(API_ENDPOINT, {
+          title: noticia.title,
+          content: textoNoticia,
+          state: estadoEncontrado,
+          city: cidade,
+          type: 'news',
+          image: imagemCompleta,
+        });
+        console.log('Post enviado:', response.data);
+      } catch (error) {
+        console.error('Erro ao enviar o post:', error);
+      }
+    }
+  } catch (error) {
+    console.error('Erro na raspagem do GloboRural:', error);
+  }
+};
+
+const runScraping = async () => {
+  await scrapeEmbrapa(); 
+  await scrapeGloboRural(); 
+};
+
+runScraping();

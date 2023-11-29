@@ -2,7 +2,6 @@ const cheerio = require('cheerio');
 const axios = require('axios');
 const cron = require('node-cron');
 
-
 const API_ENDPOINT = 'api_link';
 
 const estadosBrasil = {
@@ -65,21 +64,30 @@ const capitaisBrasil = [
   'Palmas',
 ];
 
-const baseURL = 'https://www.embrapa.br/busca-de-noticias';
+const postToAPI = async (data) => {
+  try {
+    const response = await axios.post(API_ENDPOINT, data);
+    if (response.status === 200) {
+      console.log('Post enviado com sucesso:', response.data);
+    } else {
+      console.error('Erro ao enviar o post para a API:', response.status, response.statusText);
+    }
+  } catch (error) {
+    console.error('Erro ao enviar o post para a API:', error);
+  }
+};
 
 const runScraping = async () => {
   try {
-    const { data } = await axios.get(baseURL);
+    const { data } = await axios.get('https://g1.globo.com/economia/agronegocios/globo-rural/');
     const $ = cheerio.load(data);
 
     const noticias = [];
 
-    const newsElements = $('.table-data .conteudo');
-
-    newsElements.each((index, element) => {
-      const title = $(element).find('.titulo').text().trim();
-      const resumo = $(element).find('.detalhes p').text().trim();
-      const link = $(element).find('a').attr('href').replace(/\?.*/, '');
+    $('.feed-post-body').each((index, element) => {
+      const title = $(element).find('a.feed-post-link').text().trim();
+      const resumo = $(element).find('.feed-post-body-resumo').text().trim();
+      const link = $(element).find('a.feed-post-link').attr('href');
 
       noticias.push({ title, resumo, link });
     });
@@ -88,14 +96,10 @@ const runScraping = async () => {
       const response = await axios.get(noticia.link);
       const $noticia = cheerio.load(response.data);
 
-      const imagemPrincipal = $noticia('.imagem-principal img[src]').attr('data-src');
-      const imagemCompleta = imagemPrincipal
-        ? `https://www.embrapa.br/${imagemPrincipal}`
-        : 'https://maissoja.com.br/wp-content/uploads/2015/06/Embrapa.jpg';
+      const imagemPrincipal = $noticia('.mc-article-body img').attr('src');
+      const imagemCompleta = imagemPrincipal ? `${imagemPrincipal}` : '';
 
-      const textoNoticia = $noticia('.texto-noticia')
-        .text()
-        .replace(/src="\/documents/g, 'src="https://www.embrapa.br/documents');
+      const textoNoticia = $noticia('.mc-article-body p').text();
 
       let estadoEncontrado = '';
       let cidade = '';
@@ -116,10 +120,11 @@ const runScraping = async () => {
       console.log('Texto da Notícia:', textoNoticia);
       console.log('Estado:', estadoEncontrado);
       console.log('Cidade:', cidade);
+      console.log('Imagem:', imagemCompleta);
       console.log('---');
 
       try {
-        const response = await axios.post(API_ENDPOINT, {
+        await postToAPI({
           title: noticia.title,
           content: textoNoticia,
           state: estadoEncontrado,
@@ -127,7 +132,6 @@ const runScraping = async () => {
           type: 'news',
           image: imagemCompleta,
         });
-        console.log('Post enviado:', response.data);
       } catch (error) {
         console.error('Erro ao enviar o post:', error);
       }
@@ -137,8 +141,4 @@ const runScraping = async () => {
   }
 };
 
-
-cron.schedule('0 0 */3 * *', () => {
-  console.log('Executando o script de scraping a cada 3 dias.');
-  runScraping();
-});
+runScraping();
